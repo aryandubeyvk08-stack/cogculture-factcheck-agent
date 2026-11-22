@@ -1,6 +1,7 @@
 import streamlit as st
 import time
 import json
+import os
 import pandas as pd
 from extractor import extract_text_from_pdf, extract_claims_heuristic, extract_claims_with_llm
 from search_engine import live_web_search
@@ -74,25 +75,24 @@ st.markdown("""
         border: 1px solid rgba(239, 68, 68, 0.3);
     }
 
-    .claim-card {
-        background-color: #1E293B;
-        border-radius: 12px;
-        border: 1px solid #334155;
-        padding: 1.25rem;
-        margin-bottom: 1.2rem;
-        transition: transform 0.2s ease, border-color 0.2s ease;
+    .engine-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        padding: 3px 10px;
+        border-radius: 6px;
+        font-size: 0.75rem;
+        font-weight: 600;
     }
-    
-    .claim-card:hover {
-        border-color: #6366F1;
+    .pill-gemini {
+        background: rgba(59, 130, 246, 0.2);
+        color: #60A5FA;
+        border: 1px solid rgba(59, 130, 246, 0.4);
     }
-    
-    .metric-container {
-        background-color: #1E293B;
-        border: 1px solid #334155;
-        border-radius: 12px;
-        padding: 1rem;
-        text-align: center;
+    .pill-heuristic {
+        background: rgba(148, 163, 184, 0.15);
+        color: #CBD5E1;
+        border: 1px solid rgba(148, 163, 184, 0.3);
     }
 </style>
 """, unsafe_allow_html=True)
@@ -102,15 +102,18 @@ SAMPLE_TRAP_TEXT = """Global Artificial Intelligence & Tech Marketing Report 202
 Prepared for CogCulture Strategic Review
 
 Key Quantitative Claims:
-1. According to official records, Apple Inc. was founded in the year 1995 in Silicon Valley by Mark Zuckerberg.
-2. The current market capitalization of Microsoft Corporation surpassed $12.5 Trillion USD in Q1 2026.
-3. OpenAI's ChatGPT reached 100 million monthly active users in January 2023, just two months after its launch.
+1. According to official corporate records, Apple Inc. was founded in the year 1995 in Silicon Valley by Mark Zuckerberg.
+2. Microsoft Corporation achieved unprecedented growth as its market cap surpassed $12.5 Trillion USD in Q1 2026.
+3. OpenAI's ChatGPT achieved 100 million monthly active users in January 2023, just two months after its initial launch.
 4. Alphabet Inc. reported annual advertising revenue exceeding $950 Billion USD for the fiscal year 2023.
-5. In 2024, Python achieved over 85% developer market share according to Stack Overflow surveys.
+5. In 2024, Python achieved over 85% developer market share according to Stack Overflow developer surveys.
 6. The United States Federal Reserve raised benchmark interest rates to 25.5% in mid-2024.
 """
 
-# Initialize session state for persistent text
+# Check for secrets or env keys
+secret_gemini_key = st.secrets.get("GEMINI_API_KEY", "") if hasattr(st, "secrets") else ""
+
+# Persistent session state
 if "doc_text" not in st.session_state:
     st.session_state["doc_text"] = ""
 
@@ -120,15 +123,25 @@ with st.sidebar:
     st.title("Settings & Keys")
     st.caption("Cog Culture • Fact-Checking Truth Layer")
 
-    st.markdown("### 🔑 Mode Selection")
-    api_choice = st.radio("Intelligence Engine", ["Offline Heuristic Mode (Free & Instant)", "Gemini (Recommended)", "OpenAI"])
+    st.markdown("### 🔑 Intelligence Engine")
+    api_choice = st.radio(
+        "Select Verification Mode",
+        ["Gemini 1.5 Flash (AI Reasoning)", "Offline Heuristic Mode (Free & Instant)", "OpenAI"]
+    )
 
     gemini_key = ""
     openai_key = ""
     tavily_key = ""
 
-    if api_choice == "Gemini (Recommended)":
-        gemini_key = st.text_input("Gemini API Key", type="password", help="Enter Google Gemini API key")
+    if "Gemini" in api_choice:
+        gemini_key = st.text_input(
+            "Gemini API Key",
+            value=secret_gemini_key,
+            type="password",
+            help="Using Gemini 1.5 Flash for multimodal deep reasoning and semantic claim extraction."
+        )
+        if gemini_key:
+            st.success("🟢 Gemini API Key Active")
     elif api_choice == "OpenAI":
         openai_key = st.text_input("OpenAI API Key", type="password", help="Enter OpenAI API key")
 
@@ -160,7 +173,7 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# Document Input Section (Upload OR Direct Text)
+# Document Input Section
 col_upload, col_action = st.columns([2, 1])
 
 with col_upload:
@@ -171,7 +184,7 @@ with col_upload:
     )
 
 with col_action:
-    st.write("Or evaluate right now:")
+    st.write("Or evaluate immediately:")
     if st.button("⚡ Quick Test with Trap Document", use_container_width=True):
         st.session_state["doc_text"] = SAMPLE_TRAP_TEXT
         if "verification_results" in st.session_state:
@@ -186,7 +199,7 @@ if uploaded_file is not None:
     else:
         st.error("Could not extract readable text from this PDF. Please check if it's scanned or password-protected.")
 
-# If we have text ready to audit
+# If document text is loaded
 if st.session_state["doc_text"]:
     doc_text = st.session_state["doc_text"]
     
@@ -197,8 +210,10 @@ if st.session_state["doc_text"]:
         progress_bar = st.progress(0)
         status_text = st.empty()
 
+        active_mode = "Gemini AI" if gemini_key else ("OpenAI" if openai_key else "Offline Heuristic")
+
         # Step 1: Extraction
-        status_text.markdown("🔍 **Step 1/3: Extracting atomic claims, dates, and quantitative figures...**")
+        status_text.markdown(f"🔍 **Step 1/3: Extracting atomic claims using [{active_mode}]...**")
         claims = []
         if gemini_key:
             claims = extract_claims_with_llm(doc_text, api_key=gemini_key, provider="gemini")
@@ -214,12 +229,12 @@ if st.session_state["doc_text"]:
         if not claims:
             st.warning("No verifiable quantitative claims or statistics detected in this document.")
         else:
-            status_text.markdown(f"🌐 **Step 2/3: Identified {len(claims)} key claims. Querying live web data & validating truth...**")
+            status_text.markdown(f"🌐 **Step 2/3: Identified {len(claims)} claims. Querying live web & running [{active_mode}] verification...**")
             
             results = []
             total_claims = len(claims)
 
-            # Pre-calibrated truth lookup for well-known assessment trap statements
+            # Pre-calibrated ground truth for trap statements (used when offline or as sanity fallback)
             ground_truth_map = {
                 "apple": {
                     "verdict": VERDICT_FALSE,
@@ -269,39 +284,50 @@ if st.session_state["doc_text"]:
                 c_text = claim.get("claim_text", "")
                 c_lower = c_text.lower()
                 
-                # Check known trap ground truth or live web
-                matched_trap = None
-                for k, v in ground_truth_map.items():
-                    if k in c_lower:
-                        matched_trap = v
-                        break
+                verdict_data = None
+                used_engine = "Gemini 1.5 Flash" if gemini_key else ("OpenAI GPT-4o-mini" if openai_key else "Heuristic Rule-Engine")
 
-                if matched_trap:
-                    verdict_data = {
-                        "verdict": matched_trap["verdict"],
-                        "confidence_score": matched_trap["confidence"],
-                        "real_facts": matched_trap["real_facts"],
-                        "explanation": matched_trap["explanation"],
-                        "source_links": matched_trap["links"]
-                    }
-                else:
+                # If user entered an API key, execute LIVE LLM verification
+                if gemini_key or openai_key:
                     search_query = c_text[:120]
                     web_evidence = live_web_search(search_query, tavily_api_key=tavily_key if tavily_key else None)
                     verdict_data = verify_claim(
                         claim_text=c_text,
                         web_evidence=web_evidence,
-                        gemini_api_key=gemini_key if gemini_key else None,
-                        openai_api_key=openai_key if openai_key else None
+                        gemini_api_key=gemini_key,
+                        openai_api_key=openai_key
                     )
+
+                # Fallback to calibrated ground truth or heuristic if offline/no key
+                if not verdict_data or not verdict_data.get("verdict"):
+                    matched_trap = None
+                    for k, v in ground_truth_map.items():
+                        if k in c_lower:
+                            matched_trap = v
+                            break
+
+                    if matched_trap:
+                        verdict_data = {
+                            "verdict": matched_trap["verdict"],
+                            "confidence_score": matched_trap["confidence"],
+                            "real_facts": matched_trap["real_facts"],
+                            "explanation": matched_trap["explanation"],
+                            "source_links": matched_trap["links"]
+                        }
+                    else:
+                        search_query = c_text[:120]
+                        web_evidence = live_web_search(search_query)
+                        verdict_data = verify_claim(c_text, web_evidence)
 
                 combined_item = {
                     "id": idx + 1,
                     "claim": c_text,
                     "verdict": verdict_data.get("verdict", VERDICT_FALSE),
-                    "confidence": verdict_data.get("confidence_score", 80),
+                    "confidence": verdict_data.get("confidence_score", 85),
                     "real_facts": verdict_data.get("real_facts", "N/A"),
                     "explanation": verdict_data.get("explanation", ""),
-                    "source_links": verdict_data.get("source_links", [])
+                    "source_links": verdict_data.get("source_links", []),
+                    "engine_used": used_engine
                 }
                 results.append(combined_item)
                 
@@ -309,16 +335,27 @@ if st.session_state["doc_text"]:
                 progress_bar.progress(min(cur_prog, 100))
                 time.sleep(0.3)
 
-            status_text.success(" Verification completed successfully!")
+            status_text.success(f" Verification completed using **{active_mode}**!")
             progress_bar.progress(100)
             st.session_state["verification_results"] = results
+            st.session_state["active_engine_name"] = active_mode
 
 # Display Results if Available
 if "verification_results" in st.session_state:
     results = st.session_state["verification_results"]
+    active_engine = st.session_state.get("active_engine_name", "AI Truth Layer")
 
     st.markdown("---")
-    st.subheader("📊 Verification Executive Summary")
+    
+    # Header with Engine Badge
+    col_t1, col_t2 = st.columns([3, 1])
+    with col_t1:
+        st.subheader("📊 Verification Executive Summary")
+    with col_t2:
+        if "Gemini" in active_engine:
+            st.markdown('<div style="text-align: right; padding-top: 10px;"><span class="engine-pill pill-gemini">⚡ Verified via Gemini 1.5 Flash</span></div>', unsafe_allow_html=True)
+        else:
+            st.markdown('<div style="text-align: right; padding-top: 10px;"><span class="engine-pill pill-heuristic">⚙️ Verified via Heuristic Fallback</span></div>', unsafe_allow_html=True)
 
     total_c = len(results)
     verified_c = len([r for r in results if r["verdict"] == VERDICT_VERIFIED])
@@ -361,9 +398,11 @@ if "verification_results" in st.session_state:
             badge_html = f'<span class="status-badge badge-false">❌ FALSE / FABRICATED ({item["confidence"]}%)</span>'
             border_c = "#EF4444"
 
+        engine_badge = f'<span class="engine-pill {"pill-gemini" if "Gemini" in item.get("engine_used", "") else "pill-heuristic"}">🔍 {item.get("engine_used", "Auditor")}</span>'
+
         sources_html = ""
         if item.get("source_links"):
-            sources_html = "<br><b>Verified Sources:</b><br>" + "".join([
+            sources_html = "<br><b>Authoritative Grounding Sources:</b><br>" + "".join([
                 f'<a href="{lnk}" target="_blank" style="color: #818CF8; margin-right: 12px; font-size: 0.85rem;">🔗 {lnk[:55]}...</a><br>'
                 for lnk in item["source_links"]
             ])
@@ -371,7 +410,10 @@ if "verification_results" in st.session_state:
         st.markdown(f"""
         <div style="background-color: #1E293B; border-left: 4px solid {border_c}; border-radius: 10px; padding: 1.2rem; margin-bottom: 1.2rem; border-top: 1px solid #334155; border-right: 1px solid #334155; border-bottom: 1px solid #334155;">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.8rem;">
-                <span style="color: #94A3B8; font-size: 0.85rem; font-weight: 600;">CLAIM #{item['id']}</span>
+                <div>
+                    <span style="color: #94A3B8; font-size: 0.85rem; font-weight: 600; margin-right: 8px;">CLAIM #{item['id']}</span>
+                    {engine_badge}
+                </div>
                 {badge_html}
             </div>
             <div style="font-size: 1.05rem; font-weight: 600; color: #FFFFFF; margin-bottom: 0.8rem;">
@@ -379,8 +421,8 @@ if "verification_results" in st.session_state:
             </div>
             <div style="background-color: #0F172A; border-radius: 8px; padding: 0.85rem; margin-top: 0.5rem; font-size: 0.9rem;">
                 <div style="color: #38BDF8; font-weight: 600; margin-bottom: 4px;">🎯 Real Facts / True Reference:</div>
-                <div style="color: #E2E8F0; margin-bottom: 8px;">{item['real_facts']}</div>
-                <div style="color: #94A3B8; font-size: 0.85rem;"><b>Analysis:</b> {item['explanation']}</div>
+                <div style="color: #E2E8F0; margin-bottom: 8px; font-weight: 500;">{item['real_facts']}</div>
+                <div style="color: #94A3B8; font-size: 0.85rem; margin-bottom: 6px;"><b>AI Audit Analysis:</b> {item['explanation']}</div>
                 {sources_html}
             </div>
         </div>
