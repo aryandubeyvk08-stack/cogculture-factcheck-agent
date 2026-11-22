@@ -186,7 +186,6 @@ if uploaded_file is not None:
         st.success(f" Successfully extracted {len(extracted)} characters from `{uploaded_file.name}`")
 
 # TWO-WAY BINDING: st.text_area bound directly to key="audit_input"
-# Whatever user types, edits, or deletes will BE the exact text audited!
 user_text = st.text_area(
     "✏️ Document Text / Custom Claims to Audit (Type, Edit, or Paste any statements here):",
     key="audit_input",
@@ -220,7 +219,7 @@ if st.button("🚀 Run Automated Truth Layer Verification", type="primary", use_
         time.sleep(0.3)
 
         if not claims:
-            st.warning("No verifiable quantitative claims or statements detected. Try entering a clear complete statement.")
+            st.warning("No verifiable claims or statements detected. Try entering a complete statement.")
         else:
             status_text.markdown(f"🌐 **Step 2/3: Identified {len(claims)} claim(s). Querying live web & running [{active_mode}] verification...**")
             
@@ -229,7 +228,6 @@ if st.button("🚀 Run Automated Truth Layer Verification", type="primary", use_
 
             for idx, claim in enumerate(claims):
                 c_text = claim.get("claim_text", "")
-                used_engine = "Gemini 1.5 Flash" if gemini_key else ("OpenAI GPT-4o-mini" if openai_key else "Heuristic Rule-Engine")
 
                 search_query = c_text[:120]
                 web_evidence = live_web_search(search_query, tavily_api_key=tavily_key if tavily_key else None)
@@ -237,8 +235,8 @@ if st.button("🚀 Run Automated Truth Layer Verification", type="primary", use_
                 verdict_data = verify_claim(
                     claim_text=c_text,
                     web_evidence=web_evidence,
-                    gemini_api_key=gemini_key,
-                    openai_api_key=openai_key
+                    gemini_api_key=gemini_key if gemini_key else None,
+                    openai_api_key=openai_key if openai_key else None
                 )
 
                 combined_item = {
@@ -249,7 +247,7 @@ if st.button("🚀 Run Automated Truth Layer Verification", type="primary", use_
                     "real_facts": verdict_data.get("real_facts", "N/A"),
                     "explanation": verdict_data.get("explanation", ""),
                     "source_links": verdict_data.get("source_links", []),
-                    "engine_used": used_engine
+                    "engine_used": verdict_data.get("engine_used", active_mode)
                 }
                 results.append(combined_item)
                 
