@@ -107,7 +107,7 @@ Key Quantitative Claims:
 3. OpenAI's ChatGPT achieved 100 million monthly active users in January 2023, just two months after its initial launch.
 4. Alphabet Inc. reported annual advertising revenue exceeding $950 Billion USD for the fiscal year 2023.
 5. In 2024, Python achieved over 85% developer market share according to Stack Overflow developer surveys.
-6. The United States Federal Reserve raised benchmark interest rates to 25.5% in mid-2024.
+6. Virat Kohli has the most ODI centuries in international cricket history.
 """
 
 # Check for secrets or env keys
@@ -138,7 +138,7 @@ with st.sidebar:
             "Gemini API Key",
             value=secret_gemini_key,
             type="password",
-            help="Using Gemini 1.5 Flash for multimodal deep reasoning and semantic claim extraction."
+            help="Using Gemini for multimodal deep reasoning and semantic claim extraction."
         )
         if gemini_key:
             st.success("🟢 Gemini API Key Active")
@@ -234,90 +234,20 @@ if st.session_state["doc_text"]:
             results = []
             total_claims = len(claims)
 
-            # Pre-calibrated ground truth for trap statements (used when offline or as sanity fallback)
-            ground_truth_map = {
-                "apple": {
-                    "verdict": VERDICT_FALSE,
-                    "confidence": 98,
-                    "real_facts": "Apple Inc. was founded on April 1, 1976, by Steve Jobs, Steve Wozniak, and Ronald Wayne (not 1995, and not by Mark Zuckerberg).",
-                    "explanation": "Flagged intentional entity & historical year fabrication. Zuckerberg founded Facebook in 2004.",
-                    "links": ["https://en.wikipedia.org/wiki/Apple_Inc.", "https://www.apple.com"]
-                },
-                "12.5 trillion": {
-                    "verdict": VERDICT_FALSE,
-                    "confidence": 95,
-                    "real_facts": "Microsoft's market capitalization reached ~$3.1–$3.3 Trillion USD in 2024–2026. $12.5 Trillion is grossly inflated.",
-                    "explanation": "Egregious statistical inflation. No single public company in history has reached $12.5T valuation.",
-                    "links": ["https://www.statista.com", "https://finance.yahoo.com/quote/MSFT/"]
-                },
-                "chatgpt": {
-                    "verdict": VERDICT_VERIFIED,
-                    "confidence": 99,
-                    "real_facts": "According to UBS and Reuters, ChatGPT reached 100 million monthly active users in January 2023, two months post-launch.",
-                    "explanation": "Claim precisely matches verified public internet benchmarks.",
-                    "links": ["https://www.reuters.com/technology/chatgpt-sets-record-fastest-growing-user-base-analyst-note-2023-02-01/"]
-                },
-                "950 billion": {
-                    "verdict": VERDICT_INACCURATE,
-                    "confidence": 96,
-                    "real_facts": "Alphabet's total FY2023 revenue was $307.4 Billion (with Google advertising accounting for $237.8 Billion), not $950 Billion.",
-                    "explanation": "Outdated / 3x distorted financial figure contradicting official SEC 10-K filings.",
-                    "links": ["https://abc.xyz/investor/earnings/"]
-                },
-                "85%": {
-                    "verdict": VERDICT_INACCURATE,
-                    "confidence": 92,
-                    "real_facts": "According to the Stack Overflow Developer Survey, Python's usage is ~51%, and it is not the only language used in AI.",
-                    "explanation": "Market share exaggeration. JavaScript and SQL remain ahead or comparable in overall usage.",
-                    "links": ["https://survey.stackoverflow.co/"]
-                },
-                "25.5%": {
-                    "verdict": VERDICT_FALSE,
-                    "confidence": 99,
-                    "real_facts": "The Federal Reserve's benchmark rate peaked between 5.25% - 5.50% in 2023-2024, not 25.5%.",
-                    "explanation": "Severe factual fabrication. A 25.5% US rate has never occurred in modern financial history.",
-                    "links": ["https://www.federalreserve.gov/monetarypolicy/openmarket.htm"]
-                }
-            }
-
             for idx, claim in enumerate(claims):
                 c_text = claim.get("claim_text", "")
-                c_lower = c_text.lower()
-                
-                verdict_data = None
                 used_engine = "Gemini 1.5 Flash" if gemini_key else ("OpenAI GPT-4o-mini" if openai_key else "Heuristic Rule-Engine")
 
-                # If user entered an API key, execute LIVE LLM verification
-                if gemini_key or openai_key:
-                    search_query = c_text[:120]
-                    web_evidence = live_web_search(search_query, tavily_api_key=tavily_key if tavily_key else None)
-                    verdict_data = verify_claim(
-                        claim_text=c_text,
-                        web_evidence=web_evidence,
-                        gemini_api_key=gemini_key,
-                        openai_api_key=openai_key
-                    )
-
-                # Fallback to calibrated ground truth or heuristic if offline/no key
-                if not verdict_data or not verdict_data.get("verdict"):
-                    matched_trap = None
-                    for k, v in ground_truth_map.items():
-                        if k in c_lower:
-                            matched_trap = v
-                            break
-
-                    if matched_trap:
-                        verdict_data = {
-                            "verdict": matched_trap["verdict"],
-                            "confidence_score": matched_trap["confidence"],
-                            "real_facts": matched_trap["real_facts"],
-                            "explanation": matched_trap["explanation"],
-                            "source_links": matched_trap["links"]
-                        }
-                    else:
-                        search_query = c_text[:120]
-                        web_evidence = live_web_search(search_query)
-                        verdict_data = verify_claim(c_text, web_evidence)
+                search_query = c_text[:120]
+                web_evidence = live_web_search(search_query, tavily_api_key=tavily_key if tavily_key else None)
+                
+                # Primary verification (Gemini / OpenAI / Heuristic)
+                verdict_data = verify_claim(
+                    claim_text=c_text,
+                    web_evidence=web_evidence,
+                    gemini_api_key=gemini_key,
+                    openai_api_key=openai_key
+                )
 
                 combined_item = {
                     "id": idx + 1,
@@ -333,7 +263,7 @@ if st.session_state["doc_text"]:
                 
                 cur_prog = 30 + int(70 * (idx + 1) / total_claims)
                 progress_bar.progress(min(cur_prog, 100))
-                time.sleep(0.3)
+                time.sleep(0.2)
 
             status_text.success(f" Verification completed using **{active_mode}**!")
             progress_bar.progress(100)
@@ -367,11 +297,11 @@ if "verification_results" in st.session_state:
     with col1:
         st.metric("Total Claims Audited", total_c)
     with col2:
-        st.metric("✅ Verified Accurate", verified_c, delta=f"{int(verified_c/total_c*100)}%")
+        st.metric("✅ Verified Accurate", verified_c, delta=f"{int(verified_c/total_c*100)}%" if total_c else "0%")
     with col3:
-        st.metric("⚠️ Inaccurate / Outdated", inaccurate_c, delta=f"-{int(inaccurate_c/total_c*100)}%", delta_color="inverse")
+        st.metric("⚠️ Inaccurate / Outdated", inaccurate_c, delta=f"-{int(inaccurate_c/total_c*100)}%" if total_c else "0%", delta_color="inverse")
     with col4:
-        st.metric("❌ False / Fabricated", false_c, delta=f"-{int(false_c/total_c*100)}%", delta_color="inverse")
+        st.metric("❌ False / Fabricated", false_c, delta=f"-{int(false_c/total_c*100)}%" if total_c else "0%", delta_color="inverse")
 
     st.markdown("---")
     st.subheader("📑 Detailed Claim-by-Claim Truth Audit")
