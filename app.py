@@ -15,15 +15,13 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Custom Styling for Sleek Dark Glassmorphism UI
+# Custom Styling
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
-    
     html, body, [class*="css"] {
         font-family: 'Plus Jakarta Sans', sans-serif;
     }
-    
     .main-header {
         background: linear-gradient(135deg, #0F172A 0%, #1E1B4B 50%, #0F172A 100%);
         padding: 2.2rem;
@@ -32,7 +30,6 @@ st.markdown("""
         margin-bottom: 2rem;
         box-shadow: 0 10px 30px -10px rgba(0,0,0,0.5);
     }
-    
     .hero-badge {
         display: inline-block;
         background: rgba(99, 102, 241, 0.2);
@@ -46,7 +43,6 @@ st.markdown("""
         text-transform: uppercase;
         margin-bottom: 0.8rem;
     }
-    
     .status-badge {
         font-weight: 700;
         padding: 6px 14px;
@@ -56,25 +52,21 @@ st.markdown("""
         gap: 6px;
         font-size: 0.85rem;
     }
-    
     .badge-verified {
         background-color: rgba(16, 185, 129, 0.15);
         color: #10B981;
         border: 1px solid rgba(16, 185, 129, 0.3);
     }
-    
     .badge-inaccurate {
         background-color: rgba(245, 158, 11, 0.15);
         color: #F59E0B;
         border: 1px solid rgba(245, 158, 11, 0.3);
     }
-    
     .badge-false {
         background-color: rgba(239, 68, 68, 0.15);
         color: #EF4444;
         border: 1px solid rgba(239, 68, 68, 0.3);
     }
-
     .engine-pill {
         display: inline-flex;
         align-items: center;
@@ -97,27 +89,20 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# Sample Document Generator
-SAMPLE_TRAP_TEXT = """Global Artificial Intelligence & Tech Marketing Report 2026
-Prepared for CogCulture Strategic Review
-
-Key Quantitative Claims:
-1. According to official corporate records, Apple Inc. was founded in the year 1995 in Silicon Valley by Mark Zuckerberg.
+SAMPLE_TRAP_TEXT = """1. According to official corporate records, Apple Inc. was founded in the year 1995 in Silicon Valley by Mark Zuckerberg.
 2. Microsoft Corporation achieved unprecedented growth as its market cap surpassed $12.5 Trillion USD in Q1 2026.
 3. OpenAI's ChatGPT achieved 100 million monthly active users in January 2023, just two months after its initial launch.
 4. Alphabet Inc. reported annual advertising revenue exceeding $950 Billion USD for the fiscal year 2023.
 5. In 2024, Python achieved over 85% developer market share according to Stack Overflow developer surveys.
-6. Virat Kohli has the most ODI centuries in international cricket history.
-"""
+6. Virat Kohli has the most ODI centuries in international cricket history."""
 
-# Check for secrets or env keys
 secret_gemini_key = st.secrets.get("GEMINI_API_KEY", "") if hasattr(st, "secrets") else ""
 
-# Persistent session state
-if "doc_text" not in st.session_state:
-    st.session_state["doc_text"] = ""
+# Initialize session state
+if "audit_input" not in st.session_state:
+    st.session_state["audit_input"] = ""
 
-# Sidebar Configuration
+# Sidebar
 with st.sidebar:
     st.image("https://img.icons8.com/isometric/100/shield.png", width=64)
     st.title("Settings & Keys")
@@ -152,7 +137,7 @@ with st.sidebar:
     st.markdown("---")
     st.markdown("### 📋 1-Click Trap Document Test")
     if st.button("Load Pre-set Trap Document", type="secondary", use_container_width=True):
-        st.session_state["doc_text"] = SAMPLE_TRAP_TEXT
+        st.session_state["audit_input"] = SAMPLE_TRAP_TEXT
         if "verification_results" in st.session_state:
             del st.session_state["verification_results"]
         st.rerun()
@@ -160,7 +145,7 @@ with st.sidebar:
     st.markdown("---")
     st.caption("Built for Cog Culture Assessment by **Aryan Dubey**")
 
-# Main Header Banner
+# Header
 st.markdown("""
 <div class="main-header">
     <div class="hero-badge">AI Truth Layer Agent</div>
@@ -168,45 +153,53 @@ st.markdown("""
         Automated Fact-Checking & Claim Verification
     </h1>
     <p style="color: #94A3B8; font-size: 1.05rem; margin-top: 0.5rem; margin-bottom: 0;">
-        Cross-reference marketing PDFs against live web intelligence. Automatically detect hallucinated stats, outdated metrics, and unverified claims.
+        Cross-reference marketing PDFs and custom statements against live web intelligence. Automatically detect hallucinated stats, outdated metrics, and unverified claims.
     </p>
 </div>
 """, unsafe_allow_html=True)
 
-# Document Input Section
 col_upload, col_action = st.columns([2, 1])
 
 with col_upload:
     uploaded_file = st.file_uploader(
         "📄 Upload Marketing PDF for Fact-Checking",
         type=["pdf"],
-        help="Upload any PDF to extract and verify claims against live web data"
+        help="Upload any PDF to extract and verify claims"
     )
 
 with col_action:
     st.write("Or evaluate immediately:")
     if st.button("⚡ Quick Test with Trap Document", use_container_width=True):
-        st.session_state["doc_text"] = SAMPLE_TRAP_TEXT
+        st.session_state["audit_input"] = SAMPLE_TRAP_TEXT
         if "verification_results" in st.session_state:
             del st.session_state["verification_results"]
         st.rerun()
 
+# When PDF is uploaded, update audit_input
 if uploaded_file is not None:
     extracted = extract_text_from_pdf(uploaded_file)
-    if extracted:
-        st.session_state["doc_text"] = extracted
+    if extracted and extracted != st.session_state.get("last_uploaded_text"):
+        st.session_state["audit_input"] = extracted
+        st.session_state["last_uploaded_text"] = extracted
+        if "verification_results" in st.session_state:
+            del st.session_state["verification_results"]
         st.success(f" Successfully extracted {len(extracted)} characters from `{uploaded_file.name}`")
+
+# TWO-WAY BINDING: st.text_area bound directly to key="audit_input"
+# Whatever user types, edits, or deletes will BE the exact text audited!
+user_text = st.text_area(
+    "✏️ Document Text / Custom Claims to Audit (Type, Edit, or Paste any statements here):",
+    key="audit_input",
+    height=150,
+    placeholder="Type or paste any factual claims here (e.g. MS Dhoni retired from IPL in 2024, Apple founded in 1995, etc.)..."
+)
+
+# Run verification button
+if st.button("🚀 Run Automated Truth Layer Verification", type="primary", use_container_width=True):
+    current_doc = st.session_state.get("audit_input", "").strip()
+    if not current_doc:
+        st.warning("⚠️ Please enter some text or upload a PDF above before running verification.")
     else:
-        st.error("Could not extract readable text from this PDF. Please check if it's scanned or password-protected.")
-
-# If document text is loaded
-if st.session_state["doc_text"]:
-    doc_text = st.session_state["doc_text"]
-    
-    st.text_area("📄 Document Text Ready for Audit:", doc_text, height=140)
-
-    # Big verification trigger button
-    if st.button("🚀 Run Automated Truth Layer Verification", type="primary", use_container_width=True):
         progress_bar = st.progress(0)
         status_text = st.empty()
 
@@ -216,20 +209,20 @@ if st.session_state["doc_text"]:
         status_text.markdown(f"🔍 **Step 1/3: Extracting atomic claims using [{active_mode}]...**")
         claims = []
         if gemini_key:
-            claims = extract_claims_with_llm(doc_text, api_key=gemini_key, provider="gemini")
+            claims = extract_claims_with_llm(current_doc, api_key=gemini_key, provider="gemini")
         elif openai_key:
-            claims = extract_claims_with_llm(doc_text, api_key=openai_key, provider="openai")
+            claims = extract_claims_with_llm(current_doc, api_key=openai_key, provider="openai")
         
         if not claims:
-            claims = extract_claims_heuristic(doc_text)
+            claims = extract_claims_heuristic(current_doc)
 
         progress_bar.progress(30)
         time.sleep(0.3)
 
         if not claims:
-            st.warning("No verifiable quantitative claims or statistics detected in this document.")
+            st.warning("No verifiable quantitative claims or statements detected. Try entering a clear complete statement.")
         else:
-            status_text.markdown(f"🌐 **Step 2/3: Identified {len(claims)} claims. Querying live web & running [{active_mode}] verification...**")
+            status_text.markdown(f"🌐 **Step 2/3: Identified {len(claims)} claim(s). Querying live web & running [{active_mode}] verification...**")
             
             results = []
             total_claims = len(claims)
@@ -241,7 +234,6 @@ if st.session_state["doc_text"]:
                 search_query = c_text[:120]
                 web_evidence = live_web_search(search_query, tavily_api_key=tavily_key if tavily_key else None)
                 
-                # Primary verification (Gemini / OpenAI / Heuristic)
                 verdict_data = verify_claim(
                     claim_text=c_text,
                     web_evidence=web_evidence,
@@ -270,14 +262,13 @@ if st.session_state["doc_text"]:
             st.session_state["verification_results"] = results
             st.session_state["active_engine_name"] = active_mode
 
-# Display Results if Available
+# Display Results
 if "verification_results" in st.session_state:
     results = st.session_state["verification_results"]
     active_engine = st.session_state.get("active_engine_name", "AI Truth Layer")
 
     st.markdown("---")
     
-    # Header with Engine Badge
     col_t1, col_t2 = st.columns([3, 1])
     with col_t1:
         st.subheader("📊 Verification Executive Summary")
@@ -292,7 +283,6 @@ if "verification_results" in st.session_state:
     inaccurate_c = len([r for r in results if r["verdict"] == VERDICT_INACCURATE])
     false_c = len([r for r in results if r["verdict"] == VERDICT_FALSE])
 
-    # Metric Row
     col1, col2, col3, col4 = st.columns(4)
     with col1:
         st.metric("Total Claims Audited", total_c)
@@ -306,7 +296,6 @@ if "verification_results" in st.session_state:
     st.markdown("---")
     st.subheader("📑 Detailed Claim-by-Claim Truth Audit")
 
-    # Filter selector
     filter_val = st.radio("Filter Claims by Status:", ["All Claims", "Verified Only", "Inaccurate Only", "False Only"], horizontal=True)
 
     for item in results:
@@ -358,7 +347,6 @@ if "verification_results" in st.session_state:
         </div>
         """, unsafe_allow_html=True)
 
-    # Export Report
     st.markdown("### 📥 Export Audit Report")
     df_export = pd.DataFrame(results)
     csv_data = df_export.to_csv(index=False).encode('utf-8')

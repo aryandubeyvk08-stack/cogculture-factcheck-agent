@@ -47,73 +47,47 @@ def extract_text_from_pdf(pdf_file) -> str:
 
 def extract_claims_heuristic(text: str) -> List[Dict[str, Any]]:
     """
-    Rule-based claim extractor. Identifies sentences containing:
-      - numbers, percentages, currency, dates, magnitudes
-      - superlatives / record claims (most, highest, fastest, largest, etc.)
-      - named entities with factual assertions
-    Skips short lines, headers, and parenthetical annotations.
+    Splits text into verifiable statements.
+    Works for numbered lists, bullet points, separate lines, or sentences.
+    Ensures user-typed custom claims (like 'MS Dhoni retired from IPL') are NEVER ignored.
     """
-    # Split into candidate sentences
     raw_lines = text.split("\n")
-    blocks = []
-    cur = ""
+    candidates = []
+    
     for line in raw_lines:
-        s = line.strip()
-        if not s:
+        line_clean = line.strip()
+        if not line_clean:
             continue
-        if re.match(r'^\d+[.)]\s+', s) or re.match(r'^[•\-*]\s+', s):
-            if cur:
-                blocks.append(cur)
-            cur = s
+        
+        # If line has numbering like "1. ", "2) ", strip it
+        cleaned_line = re.sub(r'^\d+[.)]\s+', '', line_clean)
+        cleaned_line = re.sub(r'^[•\-*]\s+', '', cleaned_line).strip()
+        
+        # If it's a multi-sentence line, split by periods
+        if len(cleaned_line) > 120 and "." in cleaned_line:
+            sents = re.split(r'(?<=[.!?])\s+', cleaned_line)
+            for s in sents:
+                if len(s.strip()) >= 15:
+                    candidates.append(s.strip())
         else:
-            cur = (cur + " " + s) if cur else s
-    if cur:
-        blocks.append(cur)
-
-    # Further split long non-numbered blocks by sentence boundaries
-    sentences = []
-    for b in blocks:
-        if re.match(r'^\d+[.)]\s+', b):
-            sentences.append(b)
-        else:
-            sentences.extend(re.split(r'(?<=[.!?])\s+', b))
-
-    # Patterns that indicate a verifiable factual claim
-    CLAIM_PATTERNS = re.compile(
-        r'|'.join([
-            r'\b\d+(\.\d+)?%',                          # 85%, 51.3%
-            r'[\$€£₹]\s*\d+',                           # $950, €100
-            r'\b\d[\d,]*\s*(billion|million|trillion|thousand|users|customers)',
-            r'\b(in|by|since|during)\s+(19|20)\d\d\b',   # in 2023, by 2024
-            r'\b(increased|decreased|grew|fell|exceeded|reached|surpassed|founded|launched|achieved|reported|raised)\b',
-            r'\b(most|highest|fastest|largest|biggest|lowest|first|longest|record|leading|number.one)\b',
-        ]),
-        re.IGNORECASE,
-    )
+            if len(cleaned_line) >= 15:
+                candidates.append(cleaned_line)
 
     claims = []
-    claim_id = 1
-    for sent in sentences:
-        clean = sent.strip()
-        # skip annotations like "(Intentional Trap: ...)"
-        if clean.startswith("(") and clean.endswith(")"):
+    for idx, cand in enumerate(candidates):
+        # Skip purely decorative headers or bracketed notes
+        if cand.startswith("(") and cand.endswith(")"):
             continue
-        if len(clean) < 25 or len(clean) > 600:
+        # Remove any internal annotations
+        display_text = re.sub(r'\s*\([^)]*(?:Trap|trap|NOTE|Real Fact)[^)]*\)', '', cand).strip()
+        if len(display_text) < 15:
             continue
 
-        if CLAIM_PATTERNS.search(clean):
-            # strip leading "1. " numbering
-            display = re.sub(r'^\d+[.)]\s+', '', clean)
-            # strip trailing "(Trap: ...)" annotations
-            display = re.sub(r'\s*\([^)]*(?:Trap|trap|NOTE)[^)]*\)', '', display).strip()
-            if len(display) < 20:
-                continue
-            claims.append({
-                "id": f"claim_{claim_id}",
-                "claim_text": display,
-                "type": "factual",
-            })
-            claim_id += 1
+        claims.append({
+            "id": f"claim_{idx+1}",
+            "claim_text": display_text,
+            "type": "factual"
+        })
 
     return claims
 
@@ -122,15 +96,15 @@ def extract_claims_with_llm(text: str, api_key: str = None, provider: str = "gem
     """Extract claims via LLM. Falls back to heuristic on any failure."""
     prompt = (
         "You are an expert Fact-Checking AI. "
-        "Extract every specific, verifiable factual claim from the document below. "
-        "Include claims about statistics, money, dates, records, rankings, and historical facts. "
+        "Extract every specific factual claim or statement from the document/text below. "
+        "Include all claims about sports records, retirements, company statistics, money, dates, rankings, and historical facts. "
         "Return ONLY a JSON array. Each element: "
         '{"id":"claim_N","claim_text":"...","subject":"...","category":"..."}\n\n'
-        f"Document:\n\"\"\"\n{text[:8000]}\n\"\"\""
+        f"Text to Extract From:\n\"\"\"\n{text[:8000]}\n\"\"\""
     )
     if api_key and provider == "gemini":
         import urllib.request
-        for model in ["gemini-2.0-flash", "gemini-1.5-flash"]:
+        for model in ["gemini-1.5-flash", "gemini-2.0-flash", "gemini-1.5-pro"]:
             try:
                 url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
                 payload = json.dumps({
@@ -138,10 +112,9 @@ def extract_claims_with_llm(text: str, api_key: str = None, provider: str = "gem
                     "generationConfig": {"temperature": 0.1},
                 }).encode("utf-8")
                 req = urllib.request.Request(url, data=payload, headers={"Content-Type": "application/json"})
-                with urllib.request.urlopen(req, timeout=15) as resp:
+                with urllib.request.urlopen(req, timeout=12) as resp:
                     data = json.loads(resp.read().decode("utf-8"))
                     raw = data["candidates"][0]["content"]["parts"][0]["text"].strip()
-                    # strip markdown fences if present
                     raw = re.sub(r'^```json\s*', '', raw)
                     raw = re.sub(r'\s*```$', '', raw)
                     parsed = json.loads(raw)
@@ -150,5 +123,4 @@ def extract_claims_with_llm(text: str, api_key: str = None, provider: str = "gem
             except Exception:
                 continue
 
-    # fallback
     return extract_claims_heuristic(text)
